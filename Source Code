@@ -1,0 +1,71 @@
+import yfinance as yf
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+
+# Load data
+def load_data(stock_symbol='AAPL', start='2015-01-01', end='2024-01-01'):
+    df = yf.download(stock_symbol, start=start, end=end)
+    return df[['Close']]
+
+# Preprocess data
+def preprocess_data(data, sequence_length=60):
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(data)
+
+    x = []
+    y = []
+
+    for i in range(sequence_length, len(scaled_data)):
+        x.append(scaled_data[i-sequence_length:i, 0])
+        y.append(scaled_data[i, 0])
+
+    x = np.array(x)
+    y = np.array(y)
+
+    return x.reshape(x.shape[0], x.shape[1], 1), y, scaler
+
+# Build LSTM model
+def build_model(input_shape):
+    model = Sequential()
+    model.add(LSTM(units=50, return_sequences=True, input_shape=input_shape))
+    model.add(Dropout(0.2))
+    model.add(LSTM(units=50, return_sequences=False))
+    model.add(Dropout(0.2))
+    model.add(Dense(units=1))
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    return model
+
+# Plot results
+def plot_predictions(true, predicted):
+    plt.figure(figsize=(14, 5))
+    plt.plot(true, color='blue', label='Actual Price')
+    plt.plot(predicted, color='red', label='Predicted Price')
+    plt.title('Stock Price Prediction')
+    plt.xlabel('Days')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.show()
+
+# Main
+if __name__ == "__main__":
+    stock_symbol = 'AAPL'  # You can change this to any stock
+    df = load_data(stock_symbol)
+    
+    x, y, scaler = preprocess_data(df)
+    
+    train_size = int(len(x) * 0.8)
+    x_train, x_test = x[:train_size], x[train_size:]
+    y_train, y_test = y[:train_size], y[train_size:]
+
+    model = build_model((x_train.shape[1], 1))
+    model.fit(x_train, y_train, epochs=20, batch_size=32)
+
+    predictions = model.predict(x_test)
+    predictions = scaler.inverse_transform(predictions.reshape(-1, 1))
+    real_prices = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+    plot_predictions(real_prices, predictions)
